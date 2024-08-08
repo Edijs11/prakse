@@ -1,0 +1,30 @@
+yarn start -- --host localhost
+
+visas ierīces
+adb devices
+
+savienot ierīci
+adb -s <device name> reverse tcp:8081 tcp:8081
+
+izveido jaunu branch
+git checkout -b new-branch-name
+
+commit changes
+git add .
+git commit -m "Your commit message here"
+
+completely new branch push
+git push -u origin new-branch-name
+
+already existing branch
+git push origin new-branch-name
+
+git reset --hard HEAD~1
+
+
+pārslēgties uz main zaru
+git checkout main
+Paņemt jaunākās izmaiņas ar
+git pull
+pārslēgties atpakaļ un paņemt izmaiņas no main zara ar
+git merge main

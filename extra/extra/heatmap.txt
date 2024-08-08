@@ -1,0 +1,126 @@
+import React, { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import * as xml2js from "xml2js";
+import { Button } from "~/components/button";
+import { Modal } from "~/components/modal/modal";
+import { InformationGraph } from "~/types/information-graph";
+import { MapServiceWmsTiled } from "~/types/map";
+
+type mapInfoProps = {
+    isOpen: boolean;
+    closeModal: () => void;
+    serviceConfiguration: MapServiceWmsTiled;
+};
+type LoadingState =
+    | { status: "loading" }
+    | { status: "success"; infograph: InformationGraph[] }
+    | { status: "failure" };
+
+export function MapInformationModal({ isOpen, closeModal, serviceConfiguration: serviceConfiguration }: mapInfoProps) {
+    const [infoGraphValue, setInfoGraphValue] = useState(null);
+    const [loadingState, setLoadingState] = useState<LoadingState>({ status: "loading" });
+    const { t } = useTranslation();
+
+    const fetchData = async () => {
+        try {
+            const url = new URL(serviceConfiguration.url);
+            url.searchParams.set("service", "WMS");
+            url.searchParams.set("version", "1.1.1");
+            url.searchParams.set("request", "GetStyles");
+            url.searchParams.set("layers", serviceConfiguration.layers[0]);
+
+            const response = await fetch(url);
+
+            if (!response.ok) {
+                throw new Error(`http error: ${response.status}`);
+            }
+
+            const xmlData = await response.text();
+            xml2js.parseString(xmlData, (err, result) => {
+                if (err) {
+                    console.error("Error converting XML to JSON:", err);
+                } else {
+                    setInfoGraphValue(result);
+                    setLoadingState({ status: "success", infograph: result });
+                }
+            });
+        } catch (error) {
+            console.log("Fetch error: ", error);
+            setLoadingState({ status: "failure" });
+        }
+    };
+
+    useEffect(() => {
+        fetchData();
+    }, [serviceConfiguration]);
+    const colors: InformationGraph[] =
+        (
+            infoGraphValue?.["sld:StyledLayerDescriptor"]?.["sld:NamedLayer"]?.[0]?.["sld:UserStyle"]?.[0]?.[
+                "sld:FeatureTypeStyle"
+            ]?.[0]?.["sld:Rule"]?.[0]?.["sld:RasterSymbolizer"]?.[0]?.["sld:ColorMap"]?.[0]?.["sld:ColorMapEntry"] ?? []
+        ).flatMap((entry: { $: InformationGraph }) => entry["$"]) ?? [];
+
+    const updatedColors = colors.map((current, index, array) => {
+        if (index > 0 && index < array.length) {
+            const previousLabel = array[index - 1].label;
+            const currentLabel = current.label;
+            current.label = `${previousLabel} - ${currentLabel}`;
+            const labels = current.label.split(" - ");
+            current.label = labels.slice(-2).join(" - ");
+        }
+        return current;
+    });
+
+    const handleReload = () => {
+        setLoadingState({ status: "loading" });
+        fetchData();
+    };
+
+    return (
+        <View style={styles.container}>
+            <Modal visible={isOpen} onClose={() => closeModal()}>
+                {loadingState.status === "loading" && <ActivityIndicator size="small" />}
+                {loadingState.status === "success" && (
+                    <View style={{ marginBottom: 20 }}>
+                        <Text style={{ marginBottom: 10, fontWeight: "bold" }}>{t(serviceConfiguration.title)}</Text>
+                        {colors
+                            .slice(1)
+                            .reverse()
+                            .map((item, index) => (
+                                <View key={index} style={{ flexDirection: "row", marginBottom: 2 }}>
+                                    <View
+                                        key={index}
+                                        style={{
+                                            width: 20,
+                                            height: 20,
+                                            backgroundColor: item.color + (item.opacity || ""),
+                                        }}
+                                    />
+                                    <Text style={{ marginHorizontal: 8 }}>{item.label}</Text>
+                                </View>
+                            ))}
+                    </View>
+                )}
+                {loadingState.status === "failure" && (
+                    <View>
+                        <Text>Failed to laod data! Please try again.</Text>
+                        <Button title="Reload" onPress={handleReload} />
+                    </View>
+                )}
+            </Modal>
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+    rowContainer: {
+        flexDirection: "row",
+    },
+    contentContainer: {
+        flex: 1,
+    },
+});
